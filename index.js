@@ -1,4 +1,4 @@
-// Dolby Cinema Processor
+//Gamma Control Gmaestro
 
 var udp = require('../../udp');
 var instance_skel = require('../../instance_skel');
@@ -369,7 +369,6 @@ instance.prototype.action = function(action) {
 	if (cmd !== undefined) {
 		if (self.udp !== undefined ) {
 			cmd = 'Gmaestro ' + cmd;
-			console.log(cmd);
 			//debug('sending',cmd,"to",self.config.host);
 
 			self.udp.send(Buffer.from(cmd));
