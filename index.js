@@ -331,7 +331,7 @@ instance.prototype.actions = function() {
 			]
 		},
 		'increase_master_middle': {
-			label: 'Increase Master Middle Point Luminance By %',
+			label: 'Increase Master Middle Gray Balance By %',
 			options: [
 				{
 					type: 'dropdown',
@@ -359,7 +359,7 @@ instance.prototype.actions = function() {
 			]
 		},
 		'decrease_master_middle': {
-			label: 'Decrease Master Middle Point Luminance By %',
+			label: 'Decrease Master Middle Gray Balance By %',
 			options: [
 				{
 					type: 'dropdown',
@@ -778,8 +778,8 @@ instance.prototype.actions = function() {
 				}
 			]
 		},
-		'increase_green_black': {
-			label: 'Increase Green Black By %',
+		'increase_blue_black': {
+			label: 'Increase Blue Black By %',
 			options: [
 				{
 					type: 'dropdown',
@@ -1054,18 +1054,30 @@ instance.prototype.action = function(action) {
 		}
 
 		if (index > 0) {
-			if (action.action.indexOf('increase_' > -1)) {
+			if (action.action.indexOf('increase_') > -1) {
 				screenStateObj.gamma[index] = (((screenStateObj.gamma[index] * 100) + percentage) / 100);
 			}
 			else if (action.action.indexOf('decrease_') > -1) {
 				screenStateObj.gamma[index] = (((screenStateObj.gamma[index] * 100) - percentage) / 100);
 			}
 
-			if (screenStateObj.gamma[index] > 1) {
-				screenStateObj.gamma[index] = 1;
+			if (action.action.indexOf('_middle') > -1) {
+				//the middle values can range from 0.5 to 1.5
+				if (screenStateObj.gamma[index] > 1.5) {
+					screenStateObj.gamma[index] = 1.5;
+				}
+				else if (screenStateObj.gamma[index] < 0.5) {
+					screenStateObj.gamma[index] = 0.5;
+				}
 			}
-			else if (screenStateObj.gamma[index] < 0) {
-				screenStateObj.gamma[index] = 0;
+			else {
+				//the other values can range from 0 to 1
+				if (screenStateObj.gamma[index] > 1) {
+						screenStateObj.gamma[index] = 1;
+				}
+				else if (screenStateObj.gamma[index] < 0) {
+					screenStateObj.gamma[index] = 0;
+				}
 			}
 		}
 
