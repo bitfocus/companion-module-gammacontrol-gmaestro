@@ -45,6 +45,9 @@ instance.prototype.updateConfig = function(config) {
 instance.prototype.init = function() {
 	let self = this;
 
+	debug = self.debug;
+	log = self.log;
+
 	self.init_udp();
 	self.init_timer();
 };
