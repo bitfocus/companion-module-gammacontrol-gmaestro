@@ -1,6 +1,7 @@
 // Gamma Control Gmaestro
 
 var udp = require('../../udp');
+var dgram = require('dgram');
 var instance_skel = require('../../instance_skel');
 var debug;
 var log;
@@ -38,6 +39,9 @@ instance.prototype.updateConfig = function(config) {
 
 	self.config = config;
 
+	self.screens = [];
+	self.CHOICES_SCREENS = [];
+
 	self.init_udp();
 	self.init_timer();
 };
@@ -48,6 +52,9 @@ instance.prototype.init = function() {
 	debug = self.debug;
 	log = self.log;
 
+	self.screens = [];
+	self.CHOICES_SCREENS = [];
+
 	self.init_udp();
 	self.init_timer();
 };
@@ -55,17 +62,22 @@ instance.prototype.init = function() {
 instance.prototype.init_udp = function() {
 	let self = this;
 
-	if (self.udp !== undefined) {
-		self.udp.destroy();
-		delete self.udp;
-	}
+	self.destroy();
 
 	self.status(self.STATE_WARNING, 'Connecting');
 
-	if (self.config.host !== undefined) {
-		self.udp = new udp(self.config.host, 44188);
+	self.screens = [];
+	self.CHOICES_SCREENS = [];
+
+	if (self.config.broadcast) {
+		self.udp = dgram.createSocket("udp4");
 		let cmd = 'Gmaestro sub ';
-		self.udp.send(cmd);
+		self.udp.bind();
+
+		self.udp.on('listening', function() {			
+			self.udp.setBroadcast(true);
+			self.udp.send(cmd, 0, cmd.length, 44188, self.config.host);
+		});
 
 		self.udp.on('error', function (err) {
 			debug("Network error", err);
@@ -73,14 +85,36 @@ instance.prototype.init_udp = function() {
 			self.log('error',"Network error: " + err.message);
 		});
 
-		self.udp.on('data', function (data) {
+		self.udp.on('message', function (msg, rinfo) {
 			self.status(self.STATE_OK);
-			self.processFeedback(data);
+			self.processFeedback(msg.toString(), rinfo.address);
 		});
 
 		self.udp.on('status_change', function (status, message) {
 			self.status(status, message);
 		});
+	}
+	else {
+		if (self.config.host !== undefined) {
+			self.udp = new udp(self.config.host, 44188);
+			let cmd = 'Gmaestro sub ';
+			self.udp.send(cmd);
+
+			self.udp.on('error', function (err) {
+				debug("Network error", err);
+				self.status(self.STATE_ERROR, err);
+				self.log('error',"Network error: " + err.message);
+			});
+
+			self.udp.on('data', function (data) {
+				self.status(self.STATE_OK);
+				self.processFeedback(data.toString(), self.config.host);
+			});
+
+			self.udp.on('status_change', function (status, message) {
+				self.status(status, message);
+			});
+		}
 	}
 };
 
@@ -101,7 +135,15 @@ instance.prototype.checkForData = function() {
 	let self = this;
 
 	let cmd = 'Gmaestro sub ';
-	self.udp.send(cmd);
+
+	if (self.config.broadcast) {
+		self.udp.send(cmd, 0, cmd.length, 44188, self.config.host);
+	}
+	else {
+		if (self.config.host) {
+			self.udp.send(cmd); //send to individual host defined in module config
+		}
+	}
 };
 
 // Return config fields for web config
@@ -125,6 +167,13 @@ instance.prototype.config_fields = function () {
 			regex: self.REGEX_IP
 		},
 		{
+			type: 'checkbox',
+			label: 'Use UDP Broadcast',
+			id: 'broadcast',
+			default: false,
+			tooltip: 'If selected, the module will send UDP broadcast to the entire subnet based on the IP address entered, in order to build a list of screens.'
+		},
+		{
 			type: 'number',
 			id: 'polling_rate',
 			label: 'Data Polling Rate',
@@ -141,11 +190,27 @@ instance.prototype.destroy = function() {
 	let self = this;
 
 	if (self.udp !== undefined) {
-		self.udp.destroy();
+		if (self.config.broadcast) {
+			try {
+				self.udp.socket.removeAllListeners();
+				self.udp.close();
+			}
+			catch (error) {
+
+			}
+			finally {
+				self.udp = null;
+			}
+		}
+		else {
+			self.udp.destroy();
+			self.udp = null;
+		}
 	}
 
 	if (self.TIMER !== null) {
 		clearInterval(self.TIMER);
+		self.TIMER = null;
 	}
 
 	debug('destroy', self.id);
@@ -1090,15 +1155,29 @@ instance.prototype.action = function(action) {
 	}
 
 	if (cmd !== undefined) {
-		if (self.udp !== undefined ) {
-			cmd = 'Gmaestro ' + cmd;
-			//debug('sending',cmd,"to",self.config.host);
-			self.udp.send(cmd);
+		cmd = 'Gmaestro ' + cmd;
+
+		if (self.config.broadcast) {
+			let address = null;
+			for (let i = 0; i < self.screens.length; i++) {
+				if (self.screens[i].screenId === options.screen) {
+					address = self.screens[i].address;
+				}
+			}
+			if (address !== null) {
+				self.udp.send(cmd, 44188, address);
+			}
+		}
+		else {
+			//send to the individual
+			if (self.udp !== undefined ) {
+				self.udp.send(cmd);
+			}
 		}
 	}
 };
 
-instance.prototype.processFeedback = function(data) {
+instance.prototype.processFeedback = function(data, address) {
 	let self = this;
 
 	if (data.indexOf('Gmaestro ann ') > -1) {
@@ -1107,35 +1186,30 @@ instance.prototype.processFeedback = function(data) {
 
 		let objScreens = Object.entries(objJson.screens);
 
-		if (self.screens.length !== objScreens.length) {
-			//if the number of screens has changed, then a new screen was probably added, otherwise it's just a routine data update
-			self.screens = [];
-			self.CHOICES_SCREENS = [];
-	
-			for (let i = 0; i < objScreens.length; i++) {
+		for (let i = 0; i < objScreens.length; i++) {
+			//loop through the existing screens array and if it does not exist, add it
+			let found = false;
+			for (let j = 0; j < self.screens.length; j++) {
+				if (self.screens[j].screenId === objScreens[i][0]) {
+					found = true;
+				}
+			}
+
+			if (!found) {
 				let labelScreenObj = {};
 				labelScreenObj.id = objScreens[i][0];
 				labelScreenObj.label = objJson.name + ' ' + objScreens[i][1].number;
 				self.CHOICES_SCREENS.push(labelScreenObj);
 	
 				let screenObj = {};
+				screenObj.address = address;
 				screenObj.screenId = objScreens[i][0];
 				screenObj.gamma = objScreens[i][1].gamma;
 				self.screens.push(screenObj);
 			}
-	
-			self.actions();
 		}
-		else {
-			//just update the gamma settings for each screen
-			for (let i = 0; i < objScreens.length; i++) {
-				for (let j = 0; j < self.screens.length; j++) {
-					if (self.screens[j].screenId === objScreens[i][0]) {
-						self.screens[j].gamma = objScreens[i][1].gamma;
-					}
-				}
-			}
-		}
+
+		self.actions();
 	}
 };
 
