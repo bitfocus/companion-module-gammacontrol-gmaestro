@@ -1186,6 +1186,8 @@ instance.prototype.processFeedback = function(data, address) {
 
 		let objScreens = Object.entries(objJson.screens);
 
+		let addedScreen = false;
+
 		for (let i = 0; i < objScreens.length; i++) {
 			//loop through the existing screens array and if it does not exist, add it
 			let found = false;
@@ -1206,10 +1208,14 @@ instance.prototype.processFeedback = function(data, address) {
 				screenObj.screenId = objScreens[i][0];
 				screenObj.gamma = objScreens[i][1].gamma;
 				self.screens.push(screenObj);
+
+				addedScreen = true;
 			}
 		}
 
-		self.actions();
+		if (addedScreen) { //if we added to the CHOICES array, we need to update the actions list, but, we don't want to just do this every time unless something was added
+			self.actions();
+		}
 	}
 };
 
