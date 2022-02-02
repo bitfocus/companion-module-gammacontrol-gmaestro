@@ -2,7 +2,9 @@
 	"name": "gammacontrol-gmaestro",
 	"version": "1.0.2",
 	"api_version": "1.0.0",
-	"keywords": [ "Graphics"],
+	"keywords": [
+		"Graphics"
+	],
 	"manufacturer": "Gamma Control",
 	"product": "GMaestro",
 	"shortname": "gmaestro",
